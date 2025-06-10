@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube 音樂播放器</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 10px;
+            background: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        .player-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            max-width: 400px;
+        }
+        
+        .play-button {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(45deg, #ff0000, #cc0000);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.3s ease;
+            box-shaddow: 0 4px 15px rgba(255, 0, 0, 0.3);
+        }
+        
+        .play-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(255, 0, 0, 0.4);
+        }
+        
+        .play-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .song-info {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .song-title {
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .song-status {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .youtube-player {
+            position: absolute;
+            left: -9999px;
+            top: -9999px;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+        }
+        
+        .loading {
+            color: #999;
+        }
+        
+        .playing {
+            color: #ff0000;
+            font-weight: bold;
+        }
+        
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        
+        .volume-slider {
+            width: 80px;
+            height: 4px;
+            -webkit-appearance: none;
+            background: #ddd;
+            border-radius: 2px;
+        }
+        
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #ff0000;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        .volume-icon {
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="player-container">
+        <button class="play-button" id="playBtn" disabled>
+            <span id="playIcon">⏵</span>
+        </button>
+        <div class="song-info">
+            <div class="song-title" id="songTitle">YouTube 音樂載入中...</div>
+            <div class="song-status" id="songStatus">準備播放器</div>
+            <div class="volume-control">
+                <span class="volume-icon">🔊</span>
+                <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="70">
+            </div>
+        </div>
+    </div>
+    
+    <!-- YouTube 播放器（隱藏） -->
+    <div id="youtube-player" class="youtube-player"></div>
+
+    <script>
+        // YouTube API 設定
+        let player;
+        let isPlayerReady = false;
+        let isPlaying = false;
+        
+        const playBtn = document.getElementById('playBtn');
+        const playIcon = document.getElementById('playIcon');
+        const songTitle = document.getElementById('songTitle');
+        const songStatus = document.getElementById('songStatus');
+        const volumeSlider = document.getElementById('volumeSlider');
+        
+        // 從 URL 提取 YouTube 影片 ID
+        const YOUTUBE_URL = 'https://www.youtube.com/watch?v=nPvuNsRccVw&t=39s';
+        const VIDEO_ID = extractVideoId(YOUTUBE_URL);
+        const START_TIME = 39; // 從第39秒開始播放
+        
+        function extractVideoId(url) {
+            const regex = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/;
+            const match = url.match(regex);
+            return match ? match[1] : null;
+        }
+        
+        // 載入 YouTube API
+        function loadYouTubeAPI() {
+            const tag = document.createElement('script');
+            tag.src = 'https://www.youtube.com/iframe_api';
+            const firstScriptTag = document.getElementsByTagName('script')[0];
+            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+        }
+        
+        // YouTube API 準備好後的回調函數
+        window.onYouTubeIframeAPIReady = function() {
+            player = new YT.Player('youtube-player', {
+                height: '1',
+                width: '1',
+                videoId: VIDEO_ID,
+                playerVars: {
+                    'autoplay': 0,
+                    'controls': 0,
+                    'disablekb': 1,
+                    'fs': 0,
+                    'modestbranding': 1,
+                    'rel': 0,
+                    'showinfo': 0,
+                    'start': START_TIME
+                },
+                events: {
+                    'onReady': onPlayerReady,
+                    'onStateChange': onPlayerStateChange,
+                    'onError': onPlayerError
+                }
+            });
+        };
+        
+        function onPlayerReady(event) {
+            isPlayerReady = true;
+            playBtn.disabled = false;
+            songTitle.textContent = 'YouTube 音樂已就緒';
+            songStatus.textContent = '點擊播放';
+            
+            // 設定音量
+            player.setVolume(70);
+            
+            // 嘗試自動播放（可能會被瀏覽器阻擋）
+            setTimeout(() => {
+                if (!isPlaying) {
+                    attemptAutoplay();
+                }
+            }, 1000);
+        }
+        
+        function onPlayerStateChange(event) {
+            const status = songStatus;
+            
+            switch(event.data) {
+                case YT.PlayerState.PLAYING:
+                    isPlaying = true;
+                    playIcon.textContent = '⏸';
+                    status.textContent = '正在播放';
+                    status.className = 'song-status playing';
+                    songTitle.textContent = '♪ YouTube 音樂播放中';
+                    break;
+                    
+                case YT.PlayerState.PAUSED:
+                    isPlaying = false;
+                    playIcon.textContent = '⏵';
+                    status.textContent = '已暫停';
+                    status.className = 'song-status';
+                    songTitle.textContent = 'YouTube 音樂';
+                    break;
+                    
+                case YT.PlayerState.ENDED:
+                    isPlaying = false;
+                    playIcon.textContent = '⏵';
+                    status.textContent = '播放完畢';
+                    status.className = 'song-status';
+                    songTitle.textContent = 'YouTube 音樂';
+                    // 自動重播
+                    setTimeout(() => {
+                        if (player && isPlayerReady) {
+                            player.seekTo(START_TIME);
+                            player.playVideo();
+                        }
+                    }, 2000);
+                    break;
+                    
+                case YT.PlayerState.BUFFERING:
+                    status.textContent = '載入中...';
+                    status.className = 'song-status loading';
+                    break;
+            }
+        }
+        
+        function onPlayerError(event) {
+            songTitle.textContent = '播放錯誤';
+            songStatus.textContent = '無法載入音樂';
+            playBtn.disabled = true;
+            console.error('YouTube Player Error:', event.data);
+        }
+        
+        function attemptAutoplay() {
+            if (player && isPlayerReady && !isPlaying) {
+                try {
+                    player.playVideo();
+                } catch (error) {
+                    console.log('自動播放被阻擋:', error);
+                }
+            }
+        }
+        
+        // 播放/暫停按鈕事件
+        playBtn.addEventListener('click', function() {
+            if (!player || !isPlayerReady) return;
+            
+            if (isPlaying) {
+                player.pauseVideo();
+            } else {
+                player.playVideo();
+            }
+        });
+        
+        // 音量控制
+        volumeSlider.addEventListener('input', function() {
+            if (player && isPlayerReady) {
+                player.setVolume(this.value);
+            }
+        });
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            if (!VIDEO_ID) {
+                songTitle.textContent = '無效的 YouTube 連結';
+                songStatus.textContent = '請檢查影片 URL';
+                return;
+            }
+            
+            loadYouTubeAPI();
+        });
+        
+        // 鍵盤快捷鍵（空白鍵播放/暫停）
+        document.addEventListener('keydown', function(event) {
+            if (event.code === 'Space' && event.target === document.body) {
+                event.preventDefault();
+                playBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>
